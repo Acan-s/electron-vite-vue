@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: electron-vite-vue
+appId: com.acans.wordgame
+productName: 闪电背单词
 directories:
   output: dist/${os}
   buildResources: build
@@ -15,10 +15,7 @@ asarUnpack:
 win:
   executableName: electron-vite-vue
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
-  shortcutName: ${productName}
-  uninstallDisplayName: ${productName}
-  createDesktopShortcut: always
+  artifactName: ${productName}-${version}-setup.${ext}
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
@@ -28,7 +25,7 @@ mac:
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
 dmg:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: ${productName}-${version}.${ext}
 linux:
   target:
     - AppImage
@@ -48,6 +45,6 @@ publish:
   private: false # 若仓库是私有，改为 true（需配置 token）
   releaseType: "release" # 仅从正式 Releases 拉取更新（可选：draft 草稿版、prerelease 预发布版）
   # 测试结束处-----
-  url: https://example.com/auto-updates
+  # url: https://example.com/auto-updates
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
