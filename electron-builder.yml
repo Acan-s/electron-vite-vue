@@ -1,6 +1,7 @@
 appId: com.electron.app
 productName: electron-vite-vue
 directories:
+  output: dist/${os}
   buildResources: build
 files:
   - '!**/.vscode/*'
