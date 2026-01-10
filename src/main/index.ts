@@ -49,6 +49,11 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  // 为 macOS 设置桌面图标
+  if (process.platform === 'darwin') {
+    app.dock?.setIcon(icon)
+  }
+
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
 
