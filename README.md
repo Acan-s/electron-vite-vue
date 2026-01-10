@@ -32,3 +32,12 @@ $ npm run build:mac
 # For Linux
 $ npm run build:linux
 ```
+
+## 打包部署
+
+### 打包 Windows 并发布到 GitHub Releases
+npm run build:win -- --publish always
+### 打包 macOS 并发布到 GitHub Releases
+npm run build:mac -- --publish always
+### 打包全平台并发布（仅 macOS 系统可用）
+npm run build:all -- --publish always

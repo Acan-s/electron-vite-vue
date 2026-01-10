@@ -9,12 +9,6 @@ if (!app.isPackaged) {
   autoUpdater.updateConfigPath = join(__dirname, 'dev-app-update.yml')
 }
 
-// 配置更新服务器地址（核心！替换成你的更新包存放地址）
-autoUpdater.setFeedURL({
-  provider: 'generic', // 通用服务器（GitHub Releases 用 github）
-  url: 'https://你的服务器地址/updates/' // 存放更新包的目录
-})
-
 // 监听更新相关事件，向渲染进程（Vue/React）发送状态
 function setupAutoUpdater(mainWindow): void {
   // 1. 检查更新

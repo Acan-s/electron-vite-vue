@@ -40,7 +40,14 @@ appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
 publish:
-  provider: generic
+  # provider: generic
+  # 测试开始处-----
+  provider: github # 指定使用 GitHub Releases
+  owner: "Acan-s" # 替换为你的用户名，如 "zhangsan"
+  repo: "electron-vite-vue" # 替换为你的仓库名，如 "word-game"
+  private: false # 若仓库是私有，改为 true（需配置 token）
+  releaseType: "release" # 仅从正式 Releases 拉取更新（可选：draft 草稿版、prerelease 预发布版）
+  # 测试结束处-----
   url: https://example.com/auto-updates
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
