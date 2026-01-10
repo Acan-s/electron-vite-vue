@@ -1,7 +1,83 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { autoUpdater } from 'electron-updater'
+
+// 开发环境禁用自动更新
+if (!app.isPackaged) {
+  autoUpdater.updateConfigPath = join(__dirname, 'dev-app-update.yml')
+}
+
+// 配置更新服务器地址（核心！替换成你的更新包存放地址）
+autoUpdater.setFeedURL({
+  provider: 'generic', // 通用服务器（GitHub Releases 用 github）
+  url: 'https://你的服务器地址/updates/' // 存放更新包的目录
+})
+
+// 监听更新相关事件，向渲染进程（Vue/React）发送状态
+function setupAutoUpdater(mainWindow): void {
+  // 1. 检查更新
+  autoUpdater.checkForUpdates()
+
+  // 2. 发现新版本
+  autoUpdater.on('update-available', (info) => {
+    console.log('发现新版本：', info.version)
+    // 向渲染进程发送“有新版本”的消息
+    mainWindow.webContents.send('update-available', info)
+
+    // 可选：弹窗提示用户更新
+    dialog
+      .showMessageBox(mainWindow, {
+        type: 'info',
+        title: '发现新版本',
+        message: `有新版本 ${info.version} 可用，是否立即更新？`,
+        buttons: ['立即更新', '稍后']
+      })
+      .then(({ response }) => {
+        if (response === 0) {
+          autoUpdater.downloadUpdate() // 确认更新，开始下载
+        }
+      })
+  })
+
+  // 3. 无新版本
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('当前已是最新版本')
+    mainWindow.webContents.send('update-not-available', info)
+  })
+
+  // 4. 下载进度
+  autoUpdater.on('download-progress', (progressObj) => {
+    // 发送下载进度（百分比、速度等）
+    mainWindow.webContents.send('download-progress', progressObj)
+  })
+
+  // 5. 下载完成
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('update-downloaded:', info)
+
+    dialog
+      .showMessageBox(mainWindow, {
+        type: 'info',
+        title: '更新完成',
+        message: '更新已下载完成，是否立即重启应用？',
+        buttons: ['立即重启', '稍后重启']
+      })
+      .then(({ response }) => {
+        if (response === 0) {
+          autoUpdater.quitAndInstall() // 重启并安装更新
+        }
+      })
+  })
+
+  // 6. 更新失败
+  autoUpdater.on('error', (err) => {
+    console.error('更新失败：', err)
+    mainWindow.webContents.send('update-error', err.message)
+    dialog.showErrorBox('更新失败', err.message || '请手动下载最新版本')
+  })
+}
 
 function createWindow(): void {
   // Create the browser window.
@@ -16,6 +92,9 @@ function createWindow(): void {
       sandbox: false
     }
   })
+
+  // 初始化自动更新
+  setupAutoUpdater(mainWindow)
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
