@@ -7,6 +7,8 @@ import { autoUpdater } from 'electron-updater'
 // 开启更新日志（调试用，发布时可注释）
 autoUpdater.logger = console
 autoUpdater.autoDownload = false // 关闭自动下载，手动控制
+autoUpdater.allowPrerelease = false // 不允许预发布版本
+autoUpdater.autoInstallOnAppQuit = true // 退出时自动安装（如果用户选择稍后更新）
 
 // 开发环境禁用自动更新
 if (!app.isPackaged) {
@@ -47,6 +49,9 @@ function setupAutoUpdater(mainWindow): void {
 
   // 4. 下载进度
   autoUpdater.on('download-progress', (progressObj) => {
+    // progressObj.percent // 百分比
+    // progressObj.transferred // 已下载字节
+    // progressObj.total // 总字节
     // 发送下载进度（百分比、速度等）
     mainWindow.webContents.send('download-progress', progressObj)
   })
