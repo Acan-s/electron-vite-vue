@@ -1,7 +1,7 @@
 <template>
   <div class="dashboard">
     这是首页
-    <div class="test">测试应用更新是否生效</div>
+    <div class="test">测试应用更新是否生效-测试应用更新是否生效</div>
     <button @click="onLogin">去登录</button>
     <Update />
     <Versions />

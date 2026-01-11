@@ -1,5 +1,5 @@
 appId: com.electron.app
-productName: 闪电背单词
+productName: FlashWord # 打包用英文（给 electron-builder 用）
 # copyright: Copyright © 2026 YourName
 directories:
   output: dist/${version}/${os}
@@ -17,15 +17,17 @@ win:
   target: nsis # Windows 安装包格式
   executableName: electron-vite-vue
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
-  shortcutName: ${productName}
-  uninstallDisplayName: ${productName}
+  artifactName: 闪电背单词-${version}-setup.${ext} # 安装后在系统中显示的名称（中文）
+  shortcutName: 闪电背单词 # 开始菜单/桌面快捷方式名称（中文）
+  uninstallDisplayName: 闪电背单词 # 卸载时显示的名称（中文）
   createDesktopShortcut: always
   oneClick: false # 非一键安装
   allowToChangeInstallationDirectory: true # 允许修改安装目录
   perMachine: true
 mac:
-  target: dmg # macOS 安装包格式
+  target: 
+    - dmg # 保留 DMG（安装包）
+    - zip # 新增 ZIP（更新包，适配 electron-updater）
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
@@ -37,7 +39,7 @@ mac:
   gatekeeperAssess: false  # 禁用 Gatekeeper 评估
   sign: false  # 完全禁用签名，用于开发环境
 dmg:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: 闪电背单词-${version}.${ext}
 linux:
   target:
     - AppImage
@@ -46,7 +48,7 @@ linux:
   maintainer: electronjs.org
   category: Utility
 appImage:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: 闪电背单词-${version}.${ext}
 npmRebuild: false
 publish:
   # provider: generic # 通用静态服务器（阿里云/Nginx）
