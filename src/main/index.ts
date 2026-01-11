@@ -4,6 +4,10 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { autoUpdater } from 'electron-updater'
 
+// 开启更新日志（调试用，发布时可注释）
+autoUpdater.logger = console
+autoUpdater.autoDownload = false // 关闭自动下载，手动控制
+
 // 开发环境禁用自动更新
 if (!app.isPackaged) {
   autoUpdater.updateConfigPath = join(__dirname, 'dev-app-update.yml')
@@ -88,10 +92,12 @@ function createWindow(): void {
   })
 
   // 初始化自动更新
-  setupAutoUpdater(mainWindow)
+  // setupAutoUpdater(mainWindow)
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+    // 2. 窗口显示后检查更新
+    setupAutoUpdater(mainWindow)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
