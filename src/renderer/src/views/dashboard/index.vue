@@ -1,6 +1,7 @@
 <template>
   <div class="dashboard">
     这是首页
+    <div class="test">测试应用更新是否生效</div>
     <button @click="onLogin">去登录</button>
     <Versions />
   </div>
@@ -16,4 +17,8 @@ const onLogin = (): void => {
 }
 </script>
 
-<style lang="scss" scoped></style>
+<style scoped>
+.test {
+  background-color: pink;
+}
+</style>
