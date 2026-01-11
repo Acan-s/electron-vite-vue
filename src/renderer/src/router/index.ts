@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
+import { createRouter, createWebHashHistory, RouteRecordRaw } from 'vue-router'
 
 import Layout from '@renderer/layout/index.vue'
 
@@ -25,8 +25,7 @@ const routes: Array<RouteRecordRaw> = [
 
 const router = createRouter({
   routes,
-  history: createWebHistory() // history模式
-  // history: createWebHashHistory()// hash模式
+  history: createWebHashHistory() // hash模式
 })
 
 // 导出 router
