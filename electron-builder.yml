@@ -2,7 +2,7 @@ appId: com.electron.app
 productName: 闪电背单词
 # copyright: Copyright © 2026 YourName
 directories:
-  output: dist/${os}
+  output: dist/${version}/${os}
   buildResources: build
 files:
   - '!**/.vscode/*'

@@ -4,6 +4,10 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { autoUpdater } from 'electron-updater'
 
+// ========== 新增：全局标记，防止重复初始化 ==========
+let isUpdateHandlerRegistered = false // 标记IPC句柄是否已注册
+let mainWindowInstance: BrowserWindow | null = null // 全局窗口实例
+
 // 开启更新日志（调试用，发布时可注释）
 autoUpdater.logger = console
 autoUpdater.autoDownload = false // 关闭自动下载，手动控制
@@ -16,73 +20,127 @@ if (!app.isPackaged) {
 }
 
 // 监听更新相关事件，向渲染进程（Vue/React）发送状态
-function setupAutoUpdater(mainWindow): void {
-  // 1. 检查更新
-  autoUpdater.checkForUpdates()
+function setupAutoUpdater(mainWindow: BrowserWindow): void {
+  // ========== 核心修复1：只注册一次IPC句柄 ==========
+  if (isUpdateHandlerRegistered) {
+    // 若已注册，仅重新绑定事件到当前窗口（避免重复注册句柄）
+    bindUpdateEventsToWindow(mainWindow)
+    return
+  }
 
-  // 2. 发现新版本
-  autoUpdater.on('update-available', (info) => {
-    console.log('发现新版本：', info.version)
-    // 向渲染进程发送“有新版本”的消息
-    mainWindow.webContents.send('update-available', info)
+  // ✅ 注册前先移除旧句柄（双重保险）
+  ipcMain.removeHandler('update:check')
+  ipcMain.removeHandler('update:download')
+  ipcMain.removeHandler('update:install')
 
-    // 可选：弹窗提示用户更新
-    dialog
-      .showMessageBox(mainWindow, {
-        type: 'info',
-        title: '发现新版本',
-        message: `有新版本 ${info.version} 可用，是否立即更新？`,
-        buttons: ['立即更新', '稍后']
-      })
-      .then(({ response }) => {
-        if (response === 0) {
-          autoUpdater.downloadUpdate() // 确认更新，开始下载
+  // ✅ 注册 update:check 句柄（修复 TS7030 错误：所有分支都返回值）
+  ipcMain.handle('update:check', async () => {
+    try {
+      // 开发环境禁用更新检查
+      if (!app.isPackaged) {
+        return {
+          success: true,
+          hasUpdate: false,
+          message: '开发环境禁用更新检查'
         }
-      })
+      }
+      // 检查更新
+      const updateInfo = await autoUpdater.checkForUpdates()
+      console.log('await autoUpdater.checkForUpdates()', updateInfo)
+
+      // ========== 确保这个分支有返回值（修复 TS7030） ==========
+      return {
+        success: true,
+        hasUpdate: !!updateInfo?.updateInfo.version,
+        version: updateInfo?.updateInfo.version,
+        releaseNotes: updateInfo?.updateInfo.releaseNotes || '暂无更新说明'
+      }
+    } catch (err) {
+      console.error('检查更新失败：', err)
+      return {
+        success: false,
+        message: (err as Error).message || '检查更新失败，请检查网络'
+      }
+    }
   })
 
-  // 3. 无新版本
-  autoUpdater.on('update-not-available', (info) => {
-    console.log('当前已是最新版本')
-    mainWindow.webContents.send('update-not-available', info)
+  // ✅ 注册 update:download 句柄
+  ipcMain.handle('update:download', () => {
+    autoUpdater.downloadUpdate()
+    return { success: true, message: '开始下载更新包' }
   })
 
-  // 4. 下载进度
+  // ✅ 注册 update:install 句柄
+  ipcMain.handle('update:install', () => {
+    autoUpdater.quitAndInstall(false, true)
+    return { success: true }
+  })
+
+  // ========== 核心修复2：标记句柄已注册，避免重复执行 ==========
+  isUpdateHandlerRegistered = true
+
+  // 绑定更新事件到当前窗口
+  bindUpdateEventsToWindow(mainWindow)
+}
+
+// ========== 新增：抽离事件绑定逻辑，单独处理窗口事件 ==========
+function bindUpdateEventsToWindow(mainWindow: BrowserWindow): void {
+  // 先移除旧的事件监听（避免重复触发）
+  autoUpdater.removeAllListeners('update-available')
+  autoUpdater.removeAllListeners('update-not-available')
+  autoUpdater.removeAllListeners('download-progress')
+  autoUpdater.removeAllListeners('update-downloaded')
+  autoUpdater.removeAllListeners('error')
+
+  // ========== 更新事件监听（绑定到主窗口） ==========
+  autoUpdater.on('update-available', (info) => {
+    mainWindow.webContents.send('update:available', {
+      version: info.version,
+      releaseNotes: info.releaseNotes
+    })
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    mainWindow.webContents.send('update:not-available')
+  })
+
   autoUpdater.on('download-progress', (progressObj) => {
-    // progressObj.percent // 百分比
-    // progressObj.transferred // 已下载字节
-    // progressObj.total // 总字节
-    // 发送下载进度（百分比、速度等）
-    mainWindow.webContents.send('download-progress', progressObj)
+    mainWindow.webContents.send('update:progress', {
+      percent: progressObj.percent,
+      transferred: progressObj.transferred,
+      total: progressObj.total
+    })
   })
 
-  // 5. 下载完成
   autoUpdater.on('update-downloaded', (info) => {
-    console.log('update-downloaded:', info)
-
+    mainWindow.webContents.send('update:downloaded', info)
     dialog
       .showMessageBox(mainWindow, {
         type: 'info',
         title: '更新完成',
-        message: '更新已下载完成，是否立即重启应用？',
+        message: `新版本 ${info.version} 已下载完成`,
+        detail: '是否立即重启应用？',
         buttons: ['立即重启', '稍后重启']
       })
       .then(({ response }) => {
-        if (response === 0) {
-          autoUpdater.quitAndInstall() // 重启并安装更新
-        }
+        if (response === 0) autoUpdater.quitAndInstall()
       })
   })
 
-  // 6. 更新失败
   autoUpdater.on('error', (err) => {
-    console.error('更新失败：', err)
-    mainWindow.webContents.send('update-error', err.message)
-    dialog.showErrorBox('更新失败', err.message || '请手动下载最新版本')
+    const errorMsg = (err as Error).message || '更新失败'
+    mainWindow.webContents.send('update:error', errorMsg)
+    dialog.showErrorBox('更新失败', errorMsg)
   })
 }
 
 function createWindow(): void {
+  // ========== 核心修复3：防止重复创建窗口 ==========
+  if (mainWindowInstance) {
+    mainWindowInstance.show()
+    return
+  }
+
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 900,
@@ -96,8 +154,13 @@ function createWindow(): void {
     }
   })
 
-  // 初始化自动更新
-  // setupAutoUpdater(mainWindow)
+  // 保存全局窗口实例
+  mainWindowInstance = mainWindow
+
+  // 窗口关闭时重置实例
+  mainWindow.on('closed', () => {
+    mainWindowInstance = null
+  })
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
