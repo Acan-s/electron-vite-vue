@@ -1,99 +1,101 @@
+/**
+ * 主进程入口文件
+ * 负责应用程序的初始化、窗口创建和自动更新等核心功能
+ */
+
+// 导入所需模块
 import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { autoUpdater } from 'electron-updater'
 
-// ========== 新增：全局标记，防止重复初始化 ==========
-let isUpdateHandlerRegistered = false // 标记IPC句柄是否已注册
-let mainWindowInstance: BrowserWindow | null = null // 全局窗口实例
+/**
+ * 全局变量
+ * @isUpdateHandlerRegistered - 标记更新处理器是否已注册
+ * @mainWindowInstance - 全局窗口实例引用
+ */
+let isUpdateHandlerRegistered = false
+let mainWindowInstance: BrowserWindow | null = null
 
-// 开启更新日志（调试用，发布时可注释）
+/**
+ * 自动更新配置
+ * - 启用控制台日志
+ * - 禁用自动下载，手动控制
+ * - 禁用预发布版本
+ * - 退出时自动安装更新
+ */
 autoUpdater.logger = console
-autoUpdater.autoDownload = false // 关闭自动下载，手动控制
-autoUpdater.allowPrerelease = false // 不允许预发布版本
-autoUpdater.autoInstallOnAppQuit = true // 退出时自动安装（如果用户选择稍后更新）
+autoUpdater.autoDownload = false
+autoUpdater.allowPrerelease = false
+autoUpdater.autoInstallOnAppQuit = true
 
-// 开发环境禁用自动更新
-if (!app.isPackaged) {
-  autoUpdater.updateConfigPath = join(__dirname, 'dev-app-update.yml')
-}
-
-// 监听更新相关事件，向渲染进程（Vue/React）发送状态
-function setupAutoUpdater(mainWindow: BrowserWindow): void {
-  // ========== 核心修复1：只注册一次IPC句柄 ==========
-  if (isUpdateHandlerRegistered) {
-    // 若已注册，仅重新绑定事件到当前窗口（避免重复注册句柄）
-    bindUpdateEventsToWindow(mainWindow)
-    return
-  }
-
-  // ✅ 注册前先移除旧句柄（双重保险）
-  ipcMain.removeHandler('update:check')
-  ipcMain.removeHandler('update:download')
-  ipcMain.removeHandler('update:install')
-
-  // ✅ 注册 update:check 句柄（修复 TS7030 错误：所有分支都返回值）
-  ipcMain.handle('update:check', async () => {
-    try {
-      // 开发环境禁用更新检查
-      if (!app.isPackaged) {
-        return {
-          success: true,
-          hasUpdate: false,
-          message: '开发环境禁用更新检查'
-        }
-      }
-      // 检查更新
-      const updateInfo = await autoUpdater.checkForUpdates()
-      console.log('await autoUpdater.checkForUpdates()', updateInfo)
-
-      // ========== 确保这个分支有返回值（修复 TS7030） ==========
+/**
+ * 检查更新函数
+ * @returns {Promise<Object>} - 检查结果对象
+ * @description 执行实际的更新检查操作，返回检查结果
+ */
+async function checkForUpdates(): Promise<{
+  success: boolean
+  hasUpdate?: boolean
+  version?: string
+  releaseNotes?: string
+  message?: string
+}> {
+  try {
+    // 开发环境禁用更新检查
+    if (!app.isPackaged) {
       return {
         success: true,
-        hasUpdate: !!updateInfo?.updateInfo.version,
-        version: updateInfo?.updateInfo.version,
-        releaseNotes: updateInfo?.updateInfo.releaseNotes || '暂无更新说明'
-      }
-    } catch (err) {
-      console.error('检查更新失败：', err)
-      return {
-        success: false,
-        message: (err as Error).message || '检查更新失败，请检查网络'
+        hasUpdate: false,
+        message: '开发环境禁用更新检查'
       }
     }
-  })
 
-  // ✅ 注册 update:download 句柄
-  ipcMain.handle('update:download', () => {
-    autoUpdater.downloadUpdate()
-    return { success: true, message: '开始下载更新包' }
-  })
+    // 调用自动更新器检查更新
+    const updateInfo = await autoUpdater.checkForUpdates()
+    console.log('检查更新结果：', updateInfo)
 
-  // ✅ 注册 update:install 句柄
-  ipcMain.handle('update:install', () => {
-    autoUpdater.quitAndInstall(false, true)
-    return { success: true }
-  })
+    // 处理 releaseNotes 类型（可能是字符串或数组）
+    let releaseNotesText = '暂无更新说明'
+    if (updateInfo?.updateInfo.releaseNotes) {
+      releaseNotesText = Array.isArray(updateInfo.updateInfo.releaseNotes)
+        ? updateInfo.updateInfo.releaseNotes.join('\n')
+        : updateInfo.updateInfo.releaseNotes
+    }
 
-  // ========== 核心修复2：标记句柄已注册，避免重复执行 ==========
-  isUpdateHandlerRegistered = true
-
-  // 绑定更新事件到当前窗口
-  bindUpdateEventsToWindow(mainWindow)
+    // 返回检查结果
+    return {
+      success: true,
+      hasUpdate: !!updateInfo?.updateInfo.version,
+      version: updateInfo?.updateInfo.version,
+      releaseNotes: releaseNotesText
+    }
+  } catch (err) {
+    console.error('检查更新失败：', err)
+    return {
+      success: false,
+      message: (err as Error).message || '检查更新失败，请检查网络'
+    }
+  }
 }
 
-// ========== 新增：抽离事件绑定逻辑，单独处理窗口事件 ==========
-function bindUpdateEventsToWindow(mainWindow: BrowserWindow): void {
-  // 先移除旧的事件监听（避免重复触发）
+/**
+ * 绑定更新事件到窗口
+ * @param {BrowserWindow} mainWindow - 主窗口实例
+ * @description 绑定自动更新相关的事件监听器，处理更新过程中的各种事件
+ */
+function bindUpdateEvents(mainWindow: BrowserWindow): void {
+  // 移除旧的事件监听，避免重复触发
   autoUpdater.removeAllListeners('update-available')
   autoUpdater.removeAllListeners('update-not-available')
   autoUpdater.removeAllListeners('download-progress')
   autoUpdater.removeAllListeners('update-downloaded')
   autoUpdater.removeAllListeners('error')
 
-  // ========== 更新事件监听（绑定到主窗口） ==========
+  // 更新事件监听
   autoUpdater.on('update-available', (info) => {
+    // 发现新版本，通知渲染进程
     mainWindow.webContents.send('update:available', {
       version: info.version,
       releaseNotes: info.releaseNotes
@@ -101,10 +103,12 @@ function bindUpdateEventsToWindow(mainWindow: BrowserWindow): void {
   })
 
   autoUpdater.on('update-not-available', () => {
+    // 无新版本，通知渲染进程
     mainWindow.webContents.send('update:not-available')
   })
 
   autoUpdater.on('download-progress', (progressObj) => {
+    // 下载进度更新，通知渲染进程
     mainWindow.webContents.send('update:progress', {
       percent: progressObj.percent,
       transferred: progressObj.transferred,
@@ -113,6 +117,7 @@ function bindUpdateEventsToWindow(mainWindow: BrowserWindow): void {
   })
 
   autoUpdater.on('update-downloaded', (info) => {
+    // 更新下载完成，通知渲染进程并显示对话框
     mainWindow.webContents.send('update:downloaded', info)
     dialog
       .showMessageBox(mainWindow, {
@@ -128,99 +133,142 @@ function bindUpdateEventsToWindow(mainWindow: BrowserWindow): void {
   })
 
   autoUpdater.on('error', (err) => {
+    // 更新失败，通知渲染进程并显示错误对话框
     const errorMsg = (err as Error).message || '更新失败'
     mainWindow.webContents.send('update:error', errorMsg)
     dialog.showErrorBox('更新失败', errorMsg)
   })
 }
 
+/**
+ * 设置自动更新
+ * @param {BrowserWindow} mainWindow - 主窗口实例
+ * @description 初始化自动更新系统，注册IPC句柄和事件监听器
+ */
+function setupAutoUpdater(mainWindow: BrowserWindow): void {
+  // 如果已经注册过，只重新绑定事件
+  if (isUpdateHandlerRegistered) {
+    bindUpdateEvents(mainWindow)
+    return
+  }
+
+  // 注册 IPC 句柄，供渲染进程调用
+  ipcMain.handle('update:check', checkForUpdates)
+
+  ipcMain.handle('update:download', () => {
+    autoUpdater.downloadUpdate()
+    return { success: true, message: '开始下载更新包' }
+  })
+
+  ipcMain.handle('update:install', () => {
+    autoUpdater.quitAndInstall(false, true)
+    return { success: true }
+  })
+
+  // 标记已注册，避免重复执行
+  isUpdateHandlerRegistered = true
+  // 绑定更新事件
+  bindUpdateEvents(mainWindow)
+}
+
+/**
+ * 创建窗口
+ * @description 创建应用程序主窗口，设置窗口属性和事件处理
+ */
 function createWindow(): void {
-  // ========== 核心修复3：防止重复创建窗口 ==========
+  // 如果窗口已存在，直接显示
   if (mainWindowInstance) {
     mainWindowInstance.show()
     return
   }
 
-  // Create the browser window.
+  // 创建新窗口
   const mainWindow = new BrowserWindow({
     width: 900,
     height: 670,
-    show: false,
-    autoHideMenuBar: true,
-    ...(process.platform === 'linux' ? { icon } : {}),
+    show: false, // 先隐藏，ready-to-show 时再显示
+    autoHideMenuBar: true, // 自动隐藏菜单栏
+    ...(process.platform === 'linux' ? { icon } : {}), // Linux 平台设置图标
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      preload: join(__dirname, '../preload/index.js'), // 预加载脚本
+      sandbox: false // 禁用沙箱，以便使用 Node.js API
     }
   })
 
-  // 保存全局窗口实例
+  // 保存窗口实例引用
   mainWindowInstance = mainWindow
 
-  // 窗口关闭时重置实例
+  // 窗口关闭时重置实例引用
   mainWindow.on('closed', () => {
     mainWindowInstance = null
   })
 
+  // 窗口准备就绪时显示并初始化更新系统
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
-    // 2. 窗口显示后检查更新
+    // 初始化自动更新系统
     setupAutoUpdater(mainWindow)
+
+    // 启动时自动检查更新（仅在打包环境）
+    if (app.isPackaged) {
+      console.log('应用启动，自动检查更新...')
+      checkForUpdates()
+    }
   })
 
+  // 设置外部链接打开方式
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
   })
 
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
+  // 加载页面
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    // 开发环境加载远程 URL
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
+    // 生产环境加载本地 HTML 文件
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
+/**
+ * 应用初始化
+ * @description 应用程序准备就绪时执行的初始化操作
+ */
 app.whenReady().then(() => {
-  // Set app user model id for windows
+  // 设置应用用户模型 ID（Windows 平台）
   electronApp.setAppUserModelId('com.electron')
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
+  // 监听窗口创建事件，优化窗口快捷键
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // 为 macOS 设置桌面图标
+  // macOS 平台设置 Dock 图标
   if (process.platform === 'darwin') {
     app.dock?.setIcon(icon)
   }
 
-  // IPC test
+  // IPC 测试
   ipcMain.on('ping', () => console.log('pong'))
 
+  // 创建主窗口
   createWindow()
 
-  app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
+  // macOS 平台激活事件处理
+  app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
+/**
+ * 所有窗口关闭时退出应用
+ * @description Windows 和 Linux 平台关闭所有窗口时退出应用
+ *              macOS 平台保持应用活跃，直到用户手动退出
+ */
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.
